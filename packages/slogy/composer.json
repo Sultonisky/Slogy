@@ -1,0 +1,33 @@
+{
+    "name": "sultonisky/slogy",
+    "description": "Simple Laravel activity logging package for tracking user actions.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Sultonisky\\Slogy\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "M. Sultoni",
+            "email": "muhsultonipml111@gmail.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "require": {
+        "php": "^8.2"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^11.1",
+        "phpunit/phpunit": "^12.5"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Sultonisky\\Slogy\\SlogyServiceProvider"
+            ]
+        }
+    }
+}
