@@ -1,6 +1,13 @@
-# Slogy
+Slogy - Laravel Package# Slogy
 
 Simple Laravel package for tracking user activities.
+
+## Features
+
+- Publish config
+- Track create (planned)
+- Track update (planned)
+- Track delete (planned)
 
 ## Installation
 
@@ -8,9 +15,8 @@ Simple Laravel package for tracking user activities.
 composer require sultonisky/slogy
 ```
 
-## Features
+## Publish config
 
-- Track create
-- Track update
-- Track delete
-- Track login
+```bash
+php artisan vendor:publish --tag=slogy-config
+```
