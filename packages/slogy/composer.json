@@ -8,6 +8,11 @@
             "Sultonisky\\Slogy\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "Sultonisky\\Slogy\\Tests\\": "tests/"
+        }
+    },
     "authors": [
         {
             "name": "M. Sultoni",
