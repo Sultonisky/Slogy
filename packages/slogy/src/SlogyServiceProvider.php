@@ -2,11 +2,14 @@
 
 namespace Sultonisky\Slogy;
 use Illuminate\Support\ServiceProvider;
+use Sultonisky\Slogy\Commands\CleanActivityLogCommand;
 
 class SlogyServiceProvider extends ServiceProvider
 {
     public function register() {
-        
+        $this->commands([
+            CleanActivityLogCommand::class,
+        ]);
     }
     public function boot(): void {
         // config publish
@@ -22,7 +25,7 @@ class SlogyServiceProvider extends ServiceProvider
         ], 'slogy-migrations');
 
         // auto load migrations
-        $this->LoadMigrationsFrom([
+        $this->loadMigrationsFrom([
             __DIR__.'/../database/migrations'
         ]);
     }
