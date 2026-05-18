@@ -118,16 +118,44 @@ class ActivityLogTest extends TestCase
             'description' => 'Recent Log',
         ]);
 
-        $this->artisan('slogy:clean --archive')
+        // Test Cleaning via CLI with dynamic days
+        $this->artisan('slogy:clean --days=35 --archive')
              ->expectsOutputToContain('Successfully cleaned 1 old activity logs')
              ->assertExitCode(0);
 
         $this->assertDatabaseMissing('activity_logs', ['id' => $oldLog->id]);
         $this->assertDatabaseHas('activity_logs', ['id' => $recentLog->id]);
 
-        // Check if archive exists in storage
-        $files = Storage::disk('local')->allFiles('slogy/archives');
-        $this->assertCount(1, $files);
+        // Test Cleaning via Model with specific IDs
+        $logToDelete = ActivityLog::create([
+            'action' => 'deleted',
+            'model' => 'Test',
+            'model_id' => 3,
+            'description' => 'Specific Log',
+        ]);
+        
+        $count = ActivityLog::clean(['ids' => [$logToDelete->id]]);
+        $this->assertEquals(1, $count);
+        $this->assertDatabaseMissing('activity_logs', ['id' => $logToDelete->id]);
+    }
+
+    public function test_it_can_export_logs_with_filter_without_deleting()
+    {
+        Storage::fake('local');
+
+        ActivityLog::create(['action' => 'created', 'model' => 'Product', 'model_id' => 1, 'description' => 'Export 1']);
+        ActivityLog::create(['action' => 'updated', 'model' => 'Product', 'model_id' => 1, 'description' => 'Export 2']);
+        ActivityLog::create(['action' => 'created', 'model' => 'User', 'model_id' => 1, 'description' => 'Export 3']);
+
+        // Export only Product logs
+        $query = ActivityLog::where('model', 'Product');
+        $filename = ActivityLog::export($query);
+
+        $this->assertStringContainsString('slogy-export-', $filename);
+        $this->assertDatabaseCount('activity_logs', 3); // No data deleted
+
+        // Check file exists
+        Storage::disk('local')->assertExists('slogy/archives/' . $filename);
     }
 
     public function test_it_uses_custom_label_in_description()
