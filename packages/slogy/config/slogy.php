@@ -17,5 +17,5 @@ return [
 
     'user_model' => 'App\Models\User',
 
-    'log_retention_days' => 30,
+    'log_retention_days' => 60,
 ];

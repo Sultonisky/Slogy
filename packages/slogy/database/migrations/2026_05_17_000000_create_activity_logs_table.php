@@ -24,11 +24,19 @@ return new class extends Migration {
             
             $table->json('old_values')->nullable();
             $table->json('new_values')->nullable();
+            
+            // Cryptographic chain columns
+            $table->string('previous_hash')->nullable();
+            $table->string('current_hash');
+            $table->boolean('is_genesis')->default(false);
+            
             $table->timestamps();
 
             $table->index(['model', 'model_id']);
             $table->index('action');
             $table->index('user_id');
+            $table->index('current_hash');
+            $table->index('is_genesis');
         });
     }
 

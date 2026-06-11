@@ -18,11 +18,15 @@ class ActivityLog extends Model {
         'model_id',
         'old_values',
         'new_values',
+        'previous_hash',
+        'current_hash',
+        'is_genesis',
     ];
 
     protected $casts = [
         'old_values' => 'array',
         'new_values' => 'array',
+        'is_genesis' => 'boolean',
     ];
 
     public function user()
@@ -36,7 +40,77 @@ class ActivityLog extends Model {
     }
 
     /**
-     * Clean old logs based on various filters.
+     * Calculate hash for a log entry.
+     */
+    public static function calculateHash(?string $previousHash, array $data, string $timestamp): string
+    {
+        $payload = json_encode([
+            'previous_hash' => $previousHash,
+            'data' => $data,
+            'timestamp' => $timestamp,
+        ]);
+
+        return hash('sha256', $payload);
+    }
+
+    /**
+     * Get the last log entry.
+     */
+    public static function getLastLog(): ?self
+    {
+        return static::latest('id')->first();
+    }
+
+    /**
+     * Verify the integrity of the entire log chain.
+     */
+    public static function verifyChain(): array
+    {
+        $logs = static::orderBy('id')->get();
+        $results = [
+            'valid' => true,
+            'invalid_logs' => [],
+            'total_logs' => $logs->count(),
+        ];
+
+        $previousHash = null;
+
+        foreach ($logs as $log) {
+            // For genesis block, use its own previous_hash (which might be the last deleted log's hash)
+            $currentPreviousHash = $log->is_genesis ? $log->previous_hash : $previousHash;
+
+            $data = [
+                'user_id' => $log->user_id,
+                'action' => $log->action,
+                'description' => $log->description,
+                'model' => $log->model,
+                'model_id' => $log->model_id,
+                'old_values' => $log->old_values,
+                'new_values' => $log->new_values,
+            ];
+
+            $timestamp = $log->created_at->toDateTimeString();
+            
+            $calculatedHash = static::calculateHash($currentPreviousHash, $data, $timestamp);
+
+            if (!hash_equals($calculatedHash, $log->current_hash)) {
+                $results['valid'] = false;
+                $results['invalid_logs'][] = [
+                    'id' => $log->id,
+                    'error' => 'Hash mismatch',
+                    'expected' => $calculatedHash,
+                    'actual' => $log->current_hash,
+                ];
+            }
+
+            $previousHash = $log->current_hash;
+        }
+
+        return $results;
+    }
+
+    /**
+     * Clean old logs based on various filters with Re-Genesis Block.
      *
      * @param array $options ['days' => int, 'before' => string, 'ids' => array, 'archive' => bool]
      * @return int Number of logs cleaned
@@ -51,11 +125,11 @@ class ActivityLog extends Model {
         } elseif (isset($options['before'])) {
             $query->where('created_at', '<', $options['before']);
         } else {
-            $days = $options['days'] ?? config('slogy.log_retention_days', 30);
+            $days = $options['days'] ?? config('slogy.log_retention_days', 60);
             $query->where('created_at', '<', Carbon::now()->subDays($days));
         }
 
-        $logs = $query->get();
+        $logs = $query->orderBy('id')->get();
         $count = $logs->count();
 
         if ($count === 0) {
@@ -63,7 +137,38 @@ class ActivityLog extends Model {
         }
 
         if ($archive) {
-            static::export($logs);
+            static::exportToJson($logs);
+        }
+
+        // Get the last log to be deleted
+        $lastDeletedLog = $logs->last();
+
+        // Find the first log to keep and set as new genesis block
+        $firstKeptLog = static::where('id', '>', $lastDeletedLog->id)->orderBy('id')->first();
+
+        if ($firstKeptLog) {
+            // Re-calculate current hash since we're changing previous_hash
+            $data = [
+                'user_id' => $firstKeptLog->user_id,
+                'action' => $firstKeptLog->action,
+                'description' => $firstKeptLog->description,
+                'model' => $firstKeptLog->model,
+                'model_id' => $firstKeptLog->model_id,
+                'old_values' => $firstKeptLog->old_values,
+                'new_values' => $firstKeptLog->new_values,
+            ];
+            
+            $newCurrentHash = static::calculateHash(
+                $lastDeletedLog->current_hash,
+                $data,
+                $firstKeptLog->created_at->toDateTimeString()
+            );
+            
+            $firstKeptLog->update([
+                'previous_hash' => $lastDeletedLog->current_hash,
+                'current_hash' => $newCurrentHash,
+                'is_genesis' => true,
+            ]);
         }
 
         // Mass delete for performance
@@ -73,44 +178,140 @@ class ActivityLog extends Model {
     }
 
     /**
-     * Export specific logs to a CSV archive without deleting them.
+     * Export specific logs to a JSON archive with digital seal.
      * 
      * @param mixed $logs Collection of logs or Query Builder
      * @return string Filename of the generated archive
      */
-    public static function export($logs): string
+    public static function exportToJson($logs): string
     {
         if ($logs instanceof \Illuminate\Database\Eloquent\Builder) {
             $logs = $logs->get();
         }
 
-        $filename = 'slogy-export-' . date('Y-m-d-His') . '.csv';
+        $logsArray = $logs->map(function ($log) {
+            return [
+                'id' => $log->id,
+                'user_id' => $log->user_id,
+                'action' => $log->action,
+                'description' => $log->description,
+                'model' => $log->model,
+                'model_id' => $log->model_id,
+                'old_values' => $log->old_values,
+                'new_values' => $log->new_values,
+                'previous_hash' => $log->previous_hash,
+                'current_hash' => $log->current_hash,
+                'is_genesis' => $log->is_genesis,
+                'created_at' => $log->created_at->toDateTimeString(),
+                'updated_at' => $log->updated_at->toDateTimeString(),
+            ];
+        })->toArray();
+
+        // Calculate digital seal using HMAC
+        $metadata = [
+            'exported_at' => now()->toDateTimeString(),
+            'log_count' => count($logsArray),
+            'version' => '1.0',
+        ];
+
+        $dataToSign = json_encode([
+            'metadata' => $metadata,
+            'logs' => $logsArray,
+        ]);
+
+        $digitalSeal = hash_hmac('sha256', $dataToSign, config('app.key'));
+
+        $filename = 'slogy-archive-' . date('Y-m-d-His') . '.json';
         $path = 'slogy/archives/' . $filename;
 
-        $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, ['ID', 'User ID', 'Action', 'Description', 'Model', 'Model ID', 'Old Values', 'New Values', 'Created At']);
-
-        foreach ($logs as $log) {
-            fputcsv($handle, [
-                $log->id,
-                $log->user_id,
-                $log->action,
-                $log->description,
-                $log->model,
-                $log->model_id,
-                json_encode($log->old_values),
-                json_encode($log->new_values),
-                $log->created_at,
-            ]);
-        }
-
-        rewind($handle);
-        $content = stream_get_contents($handle);
-        fclose($handle);
+        $content = json_encode([
+            'metadata' => $metadata,
+            'logs' => $logsArray,
+            'digital_seal' => $digitalSeal,
+        ], JSON_PRETTY_PRINT);
 
         Storage::disk('local')->put($path, $content);
 
         return $filename;
+    }
+
+    /**
+     * Validate an uploaded archive file.
+     */
+    public static function validateArchive(string $filePath): array
+    {
+        $content = Storage::disk('local')->get($filePath);
+        $data = json_decode($content, true);
+
+        if (!isset($data['metadata'], $data['logs'], $data['digital_seal'])) {
+            return [
+                'valid' => false,
+                'error' => 'Invalid archive format',
+            ];
+        }
+
+        // Recalculate digital seal
+        $dataToSign = json_encode([
+            'metadata' => $data['metadata'],
+            'logs' => $data['logs'],
+        ]);
+
+        $calculatedSeal = hash_hmac('sha256', $dataToSign, config('app.key'));
+
+        if (!hash_equals($calculatedSeal, $data['digital_seal'])) {
+            return [
+                'valid' => false,
+                'error' => 'Digital seal verification failed - archive may have been tampered with',
+            ];
+        }
+
+        // Verify log chain within archive
+        $previousHash = null;
+        $invalidLogs = [];
+
+        foreach ($data['logs'] as $index => $log) {
+            // For genesis block, use its own previous_hash
+            $currentPreviousHash = $log['is_genesis'] ? $log['previous_hash'] : $previousHash;
+
+            $logData = [
+                'user_id' => $log['user_id'],
+                'action' => $log['action'],
+                'description' => $log['description'],
+                'model' => $log['model'],
+                'model_id' => $log['model_id'],
+                'old_values' => $log['old_values'],
+                'new_values' => $log['new_values'],
+            ];
+
+            $calculatedHash = static::calculateHash(
+                $currentPreviousHash,
+                $logData,
+                $log['created_at']
+            );
+
+            if (!hash_equals($calculatedHash, $log['current_hash'])) {
+                $invalidLogs[] = [
+                    'index' => $index,
+                    'id' => $log['id'],
+                    'error' => 'Hash mismatch',
+                ];
+            }
+
+            $previousHash = $log['current_hash'];
+        }
+
+        if (!empty($invalidLogs)) {
+            return [
+                'valid' => false,
+                'error' => 'Log chain verification failed',
+                'invalid_logs' => $invalidLogs,
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'metadata' => $data['metadata'],
+        ];
     }
 
     /**
