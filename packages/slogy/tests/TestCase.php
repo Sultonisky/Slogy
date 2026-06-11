@@ -13,6 +13,25 @@ abstract class TestCase extends Orchestra
     {
         parent::setUp();
 
+        // Set default config
+        config()->set('slogy', [
+            'events' => [
+                'created' => true,
+                'updated' => true,
+                'deleted' => true,
+            ],
+            'ignored_attributes' => [
+                'password',
+                'remember_token',
+                'updated_at',
+                'created_at',
+                'deleted_at',
+                'id', // Also ignore ID since it's auto-generated
+            ],
+            'user_model' => 'App\Models\User',
+            'log_retention_days' => 60,
+        ]);
+
         $this->setUpDatabase();
     }
 

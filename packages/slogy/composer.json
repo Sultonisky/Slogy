@@ -1,8 +1,21 @@
 {
     "name": "sultonisky/slogy",
-    "description": "Simple Laravel activity logging package for tracking user actions.",
+    "description": "Tamper-proof Laravel activity logging with cryptographic chain logging, blockchain-inspired integrity, and tamper-proof archives.",
     "type": "library",
     "license": "MIT",
+    "keywords": [
+        "laravel",
+        "log",
+        "logging",
+        "activity",
+        "audit",
+        "audit-trail",
+        "security",
+        "blockchain",
+        "cryptographic",
+        "tamper-proof"
+    ],
+    "homepage": "https://github.com/YOUR_USERNAME/slogy",
     "autoload": {
         "psr-4": {
             "Sultonisky\\Slogy\\": "src/"
@@ -22,7 +35,8 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "require": {
-        "php": "^8.2"
+        "php": "^8.2",
+        "laravel/framework": "^10.0|^11.0|^12.0|^13.0"
     },
     "require-dev": {
         "orchestra/testbench": "^11.1",

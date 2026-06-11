@@ -1,22 +1,6 @@
-Slogy - Laravel Package# Slogy
+# Packages
 
-Simple Laravel package for tracking user activities.
+This directory contains the main Slogy package:
 
-## Features
+- `/slogy` - Tamper-proof Laravel logger package
 
-- Publish config
-- Track create (planned)
-- Track update (planned)
-- Track delete (planned)
-
-## Installation
-
-```bash
-composer require sultonisky/slogy
-```
-
-## Publish config
-
-```bash
-php artisan vendor:publish --tag=slogy-config
-```

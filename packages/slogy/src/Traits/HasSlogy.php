@@ -3,6 +3,7 @@
 namespace Sultonisky\Slogy\Traits;
 
 use Sultonisky\Slogy\Models\ActivityLog;
+use Carbon\Carbon;
 
 trait HasSlogy {
 
@@ -100,15 +101,45 @@ trait HasSlogy {
             ? $model->getSlogyDescription($action) 
             : "Model " . class_basename($model) . ($subjectLabel ? " ({$subjectLabel})" : "") . " has been {$action}";
 
-        ActivityLog::create([
-            'user_id'       => auth()->id() ?? 0, // 0 for system/console
+        $userId = auth()->id() ?? 0;
+        
+        // Prepare data for hashing
+        $logData = [
+            'user_id' => $userId,
+            'action' => $action,
+            'description' => $description,
+            'model' => get_class($model),
+            'model_id' => $model->id,
+            'old_values' => $oldValues,
+            'new_values' => $newValues,
+        ];
+
+        // Get previous log's hash
+        $lastLog = ActivityLog::getLastLog();
+        $previousHash = $lastLog ? $lastLog->current_hash : null;
+        $isGenesis = !$lastLog;
+
+        // Create log first to get consistent created_at timestamp
+        $log = ActivityLog::create([
+            'user_id'       => $userId,
             'action'        => $action,
             'description'   => $description,
             'model'         => get_class($model),
             'model_id'      => $model->id,
             'old_values'    => $oldValues,
             'new_values'    => $newValues,
+            'previous_hash' => $previousHash,
+            'current_hash'  => '', // Temporary empty
+            'is_genesis'    => $isGenesis,
         ]);
+
+        // Now calculate hash with the actual created_at from database
+        $timestamp = $log->created_at->toDateTimeString();
+        $currentHash = ActivityLog::calculateHash($previousHash, $logData, $timestamp);
+
+        // Update the log with correct hash
+        $log->current_hash = $currentHash;
+        $log->save();
     }
 
     protected static function getSlogySubjectLabel($model): ?string

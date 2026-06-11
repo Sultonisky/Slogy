@@ -3,12 +3,14 @@
 namespace Sultonisky\Slogy;
 use Illuminate\Support\ServiceProvider;
 use Sultonisky\Slogy\Commands\CleanActivityLogCommand;
+use Sultonisky\Slogy\Commands\VerifyLogChainCommand;
 
 class SlogyServiceProvider extends ServiceProvider
 {
     public function register() {
         $this->commands([
             CleanActivityLogCommand::class,
+            VerifyLogChainCommand::class,
         ]);
     }
     public function boot(): void {
